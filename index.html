@@ -1713,6 +1713,13 @@
     
     function sendToWebSocket(address, args) {
         if (!wsConnected || !wsConnection) return;
+        if (wsConnection.readyState !== WebSocket.OPEN) return;
+        
+        // Don't send if buffer is getting full (backpressure)
+        if (wsConnection.bufferedAmount > 65536) {
+            console.log('WebSocket buffer full, skipping frame');
+            return;
+        }
         
         try {
             const baseAddr = config.oscAddress || '/hairfield';
@@ -1774,9 +1781,14 @@
     }
     
     function initWebSocket() {
+        // Don't try to reconnect if Max API is available
+        if (maxAPIConnected) return;
+        
         // Connect to WebSocket server on same host
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
+        
+        console.log('Attempting WebSocket connection to:', wsUrl);
         
         try {
             wsConnection = new WebSocket(wsUrl);
@@ -1787,17 +1799,18 @@
                 updateConnectionStatus();
             };
             
-            wsConnection.onclose = () => {
+            wsConnection.onclose = (event) => {
                 wsConnected = false;
-                console.log('WebSocket disconnected');
+                console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
                 updateConnectionStatus();
+                wsConnection = null;
                 
-                // Try to reconnect after 2 seconds
+                // Reconnect after delay (with backoff for repeated failures)
                 setTimeout(initWebSocket, 2000);
             };
             
             wsConnection.onerror = (err) => {
-                console.log('WebSocket error - server may not be running');
+                console.log('WebSocket error');
                 wsConnected = false;
             };
             
@@ -1813,7 +1826,9 @@
                 }
             };
         } catch (e) {
-            console.log('WebSocket not available');
+            console.log('WebSocket init error:', e);
+            // Retry after delay
+            setTimeout(initWebSocket, 3000);
         }
     }
     

@@ -158,9 +158,32 @@ const httpServer = http.createServer((req, res) => {
 // Create WebSocket server
 const wss = new WebSocketServer({ server: httpServer });
 
+// Heartbeat to keep connections alive (especially important for mobile)
+function heartbeat() {
+    this.isAlive = true;
+}
+
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.log('Client heartbeat timeout, terminating');
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000); // Check every 30 seconds
+
+wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+});
+
 wss.on('connection', (ws, req) => {
     const clientIP = req.socket.remoteAddress;
     console.log(`Client connected: ${clientIP}`);
+    
+    ws.isAlive = true;
+    ws.on('pong', heartbeat);
     
     ws.on('message', (data) => {
         try {
