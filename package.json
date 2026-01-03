@@ -1,0 +1,16 @@
+{
+  "name": "hair-field",
+  "version": "1.0.0",
+  "description": "GPU-accelerated hair/tendril simulation with OSC output",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --http-port 8080 --osc-port 9000"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "keywords": ["osc", "webgl", "simulation", "interactive", "max-msp"],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,2049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hair Field - GPU Tendril Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #ui {
+            position: fixed;
+            top: 50px;
+            left: 10px;
+            background: rgba(0,0,0,0.85);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 11px;
+            max-width: 280px;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
+            z-index: 100;
+            border: 1px solid #333;
+        }
+        #ui h3 {
+            color: #ff00ff;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        .param-group {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #222;
+        }
+        .param-group:last-child {
+            border-bottom: none;
+        }
+        .param-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 6px 0;
+        }
+        .param-row label {
+            color: #aaa;
+            flex: 1;
+        }
+        .param-row input[type="range"] {
+            width: 100px;
+            margin: 0 8px;
+        }
+        .param-row .value {
+            color: #0ff;
+            width: 45px;
+            text-align: right;
+            font-size: 10px;
+        }
+        .param-row input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .param-row select {
+            background: #222;
+            color: #0ff;
+            border: 1px solid #444;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 11px;
+        }
+        button {
+            background: #ff00ff;
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            margin-right: 5px;
+            margin-top: 5px;
+        }
+        button:hover {
+            background: #ff66ff;
+        }
+        button.secondary {
+            background: #0ff;
+        }
+        button.secondary:hover {
+            background: #66ffff;
+        }
+        #stats {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.85);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 10px;
+            border: 1px solid #333;
+        }
+        #stats div {
+            margin: 3px 0;
+        }
+        .stat-label { color: #666; }
+        .stat-value { color: #0ff; }
+        #osc-status {
+            color: #ff6600;
+            margin-top: 10px;
+            font-size: 10px;
+        }
+        #osc-status.connected {
+            color: #00ff00;
+        }
+        .color-preview {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 5px;
+            border: 1px solid #444;
+        }
+        #toggle-ui {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 101;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid #333;
+            color: #ff00ff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        #toggle-ui:hover {
+            background: rgba(50,50,50,0.9);
+        }
+        #ui.hidden {
+            display: none;
+        }
+        #stats.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <button id="toggle-ui">☰ UI</button>
+    
+    <div id="ui">
+        <h3>🌿 HAIR FIELD</h3>
+        
+        <div class="param-group">
+            <strong style="color:#ff00ff">Field Setup</strong>
+            <div class="param-row">
+                <label>Camera Tilt</label>
+                <input type="range" id="cameraTilt" min="0.1" max="1.5" value="1" step="0.05">
+                <span class="value" id="cameraTiltVal">1</span>
+            </div>
+            <div class="param-row">
+                <label>Camera Distance</label>
+                <input type="range" id="cameraDistance" min="5" max="50" value="23" step="1">
+                <span class="value" id="cameraDistanceVal">23</span>
+            </div>
+            <div class="param-row">
+                <label>Hair Count</label>
+                <select id="hairCount">
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                    <option value="2048" selected>2048</option>
+                    <option value="4096">4096</option>
+                </select>
+            </div>
+            <div class="param-row">
+                <label>Hair Length</label>
+                <input type="range" id="hairLength" min="0.5" max="8" value="5.6" step="0.1">
+                <span class="value" id="hairLengthVal">5.6</span>
+            </div>
+            <div class="param-row">
+                <label>Hair Thickness</label>
+                <input type="range" id="hairThickness" min="0.5" max="20" value="0.5" step="0.5">
+                <span class="value" id="hairThicknessVal">0.5</span>
+            </div>
+            <div class="param-row">
+                <label>Segments</label>
+                <input type="range" id="segments" min="3" max="12" value="6" step="1">
+                <span class="value" id="segmentsVal">6</span>
+            </div>
+            <div class="param-row">
+                <input type="checkbox" id="gridPlacement">
+                <label>Grid Placement</label>
+            </div>
+            <div class="param-row">
+                <label>Field Size</label>
+                <input type="range" id="fieldSize" min="5" max="30" value="15" step="1">
+                <span class="value" id="fieldSizeVal">15</span>
+            </div>
+            <button onclick="regenerateField()">Regenerate Field</button>
+        </div>
+        
+        <div class="param-group">
+            <strong style="color:#0ff">Physics</strong>
+            <div class="param-row">
+                <label>Stiffness</label>
+                <input type="range" id="stiffness" min="0.1" max="2" value="0.95" step="0.05">
+                <span class="value" id="stiffnessVal">0.95</span>
+            </div>
+            <div class="param-row">
+                <label>Damping</label>
+                <input type="range" id="damping" min="0.8" max="0.99" value="0.88" step="0.01">
+                <span class="value" id="dampingVal">0.88</span>
+            </div>
+            <div class="param-row">
+                <label>Gravity</label>
+                <input type="range" id="gravity" min="0" max="1" value="0.1" step="0.01">
+                <span class="value" id="gravityVal">0.1</span>
+            </div>
+            <div class="param-row">
+                <label>Wind Strength</label>
+                <input type="range" id="windStrength" min="0" max="0.5" value="0.31" step="0.01">
+                <span class="value" id="windStrengthVal">0.31</span>
+            </div>
+            <div class="param-row">
+                <label>Wind Speed</label>
+                <input type="range" id="windSpeed" min="0.1" max="3" value="1.9" step="0.1">
+                <span class="value" id="windSpeedVal">1.9</span>
+            </div>
+        </div>
+        
+        <div class="param-group">
+            <strong style="color:#ff6600">Interaction</strong>
+            <div class="param-row">
+                <input type="checkbox" id="showSphere">
+                <label>Show Interaction Sphere</label>
+            </div>
+            <div class="param-row">
+                <label>Force Strength</label>
+                <input type="range" id="interactionStrength" min="0.5" max="10" value="2.4" step="0.1">
+                <span class="value" id="interactionStrengthVal">2.4</span>
+            </div>
+            <div class="param-row">
+                <label>Force Radius</label>
+                <input type="range" id="interactionRadius" min="0.5" max="5" value="1.3" step="0.1">
+                <span class="value" id="interactionRadiusVal">1.3</span>
+            </div>
+            <div class="param-row">
+                <label>Force Falloff</label>
+                <input type="range" id="interactionFalloff" min="0.5" max="3" value="1.3" step="0.1">
+                <span class="value" id="interactionFalloffVal">1.3</span>
+            </div>
+            <div class="param-row">
+                <label>Impulse Strength</label>
+                <input type="range" id="impulseStrength" min="1" max="20" value="10.5" step="0.5">
+                <span class="value" id="impulseStrengthVal">10.5</span>
+            </div>
+        </div>
+        
+        <div class="param-group">
+            <strong style="color:#ffff00">Colors</strong>
+            <div class="param-row">
+                <label>Base Hue</label>
+                <input type="range" id="baseHue" min="0" max="360" value="91" step="1">
+                <span class="value" id="baseHueVal">91°</span>
+                <span class="color-preview" id="baseHuePreview"></span>
+            </div>
+            <div class="param-row">
+                <label>Hue Range</label>
+                <input type="range" id="hueRange" min="0" max="180" value="60" step="1">
+                <span class="value" id="hueRangeVal">60°</span>
+            </div>
+            <div class="param-row">
+                <label>Saturation</label>
+                <input type="range" id="saturation" min="50" max="100" value="100" step="1">
+                <span class="value" id="saturationVal">100%</span>
+            </div>
+            <div class="param-row">
+                <label>Tip Brightness</label>
+                <input type="range" id="tipBrightness" min="0.5" max="2" value="1.4" step="0.1">
+                <span class="value" id="tipBrightnessVal">1.4</span>
+            </div>
+            <div class="param-row">
+                <label>Glow Intensity</label>
+                <input type="range" id="glowIntensity" min="0" max="3" value="1" step="0.1">
+                <span class="value" id="glowIntensityVal">1</span>
+            </div>
+            <div class="param-row">
+                <label>Glow Hue</label>
+                <input type="range" id="glowHue" min="-1" max="360" value="326" step="1">
+                <span class="value" id="glowHueVal">326°</span>
+                <span class="color-preview" id="glowHuePreview"></span>
+            </div>
+        </div>
+        
+        <div class="param-group">
+            <strong style="color:#00ff00">OSC Output</strong>
+            <div class="param-row">
+                <label>Output Rate (Hz)</label>
+                <input type="range" id="oscRate" min="10" max="60" value="30" step="5">
+                <span class="value" id="oscRateVal">30</span>
+            </div>
+            <div class="param-row">
+                <input type="checkbox" id="oscEnabled" checked>
+                <label>Enable OSC Output</label>
+            </div>
+            <div class="param-row">
+                <input type="checkbox" id="oscSummaryOnly">
+                <label>Summary Only (not per-hair)</label>
+            </div>
+            <div class="param-row">
+                <input type="checkbox" id="oscGridEnabled" checked>
+                <label>Enable Grid Output</label>
+            </div>
+            <div class="param-row">
+                <label>Grid Res X</label>
+                <select id="oscGridResX">
+                    <option value="2">2</option>
+                    <option value="4">4</option>
+                    <option value="8" selected>8</option>
+                    <option value="16">16</option>
+                    <option value="32">32</option>
+                    <option value="64">64</option>
+                </select>
+            </div>
+            <div class="param-row">
+                <label>Grid Res Y</label>
+                <select id="oscGridResY">
+                    <option value="2">2</option>
+                    <option value="4">4</option>
+                    <option value="8" selected>8</option>
+                    <option value="16">16</option>
+                    <option value="32">32</option>
+                    <option value="64">64</option>
+                </select>
+            </div>
+            <div class="param-row">
+                <label>OSC Address</label>
+                <input type="text" id="oscAddress" value="/hairfield" style="width: 100px; background: #222; color: #0ff; border: 1px solid #444; padding: 3px 6px; border-radius: 3px; font-family: inherit; font-size: 11px;">
+            </div>
+            <div id="osc-status">Max API: Checking...</div>
+        </div>
+        
+        <div class="param-group">
+            <button onclick="resetHairs()">Reset Hairs</button>
+            <button class="secondary" onclick="applyImpulse()">Random Impulse</button>
+        </div>
+    </div>
+    
+    <div id="stats">
+        <div><span class="stat-label">FPS:</span> <span class="stat-value" id="fps">0</span></div>
+        <div><span class="stat-label">Hairs:</span> <span class="stat-value" id="hairCountStat">0</span></div>
+        <div><span class="stat-label">Avg Amplitude:</span> <span class="stat-value" id="avgAmp">0</span></div>
+        <div><span class="stat-label">Max Amplitude:</span> <span class="stat-value" id="maxAmp">0</span></div>
+        <div><span class="stat-label">Activity:</span> <span class="stat-value" id="activity">0%</span></div>
+    </div>
+
+    <script>
+    // ========================================
+    // CONFIGURATION & STATE
+    // ========================================
+    
+    const config = {
+        cameraTilt: 1,
+        cameraDistance: 23,
+        showSphere: false,
+        hairCount: 2048,
+        hairLength: 5.6,
+        hairThickness: 0.5,
+        segments: 6,
+        gridPlacement: false,
+        fieldSize: 15,
+        stiffness: 0.95,
+        damping: 0.88,
+        gravity: 0.1,
+        windStrength: 0.31,
+        windSpeed: 1.9,
+        interactionStrength: 2.4,
+        interactionRadius: 1.3,
+        interactionFalloff: 1.3,
+        impulseStrength: 10.5,
+        baseHue: 91,
+        hueRange: 60,
+        saturation: 100,
+        tipBrightness: 1.4,
+        glowIntensity: 1,
+        glowHue: 326,
+        oscRate: 30,
+        oscEnabled: true,
+        oscSummaryOnly: false,
+        oscGridEnabled: true,
+        oscGridResX: 8,
+        oscGridResY: 8,
+        oscAddress: '/hairfield'
+    };
+    
+    let canvas, gl;
+    let hairProgram, hairVAO, hairVBO;
+    let sphereProgram, sphereVBO, sphereIBO, sphereVertexCount;
+    let hairs = [];
+    let mousePos = { x: 0, y: 0, z: 0 };
+    let mouseDown = false;
+    let prevMousePos = { x: 0, y: 0, z: 0 };
+    let time = 0;
+    let lastOSCTime = 0;
+    let maxAPI = null;
+    let maxAPIConnected = false;
+    
+    // WebSocket connection for OSC bridge
+    let wsConnection = null;
+    let wsConnected = false;
+    
+    // Sphere animation state
+    let sphereVisible = 0; // 0-1 for fade/scale
+    let sphereLastPos = { x: 0, y: 0, z: 0 };
+    let sphereFadeSpeed = 3; // How fast to fade in/out
+    
+    // FPS tracking
+    let frameCount = 0;
+    let lastFPSTime = performance.now();
+    let currentFPS = 0;
+    
+    // Camera
+    const camera = {
+        distance: 20,
+        rotationX: -Math.PI / 2.5,
+        rotationY: 0
+    };
+    
+    // ========================================
+    // SHADER SOURCES
+    // ========================================
+    
+    const vertexShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 aPosition;
+        in vec3 aColor;
+        in float aThickness;
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        
+        out vec3 vColor;
+        out float vThickness;
+        
+        void main() {
+            gl_Position = uProjection * uView * vec4(aPosition, 1.0);
+            vColor = aColor;
+            vThickness = aThickness;
+            gl_PointSize = 1.0;
+        }
+    `;
+    
+    const fragmentShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 vColor;
+        in float vThickness;
+        
+        out vec4 fragColor;
+        
+        void main() {
+            fragColor = vec4(vColor, 1.0);
+        }
+    `;
+    
+    // Line rendering shaders with thickness and glow
+    const lineVertexShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 aPosition;
+        in vec3 aNextPosition;
+        in vec3 aColor;
+        in float aSide;
+        in float aThickness;
+        in float aGlow;
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform vec2 uResolution;
+        
+        out vec3 vColor;
+        out float vGlow;
+        out float vEdge;
+        
+        void main() {
+            vec4 currentProj = uProjection * uView * vec4(aPosition, 1.0);
+            vec4 nextProj = uProjection * uView * vec4(aNextPosition, 1.0);
+            
+            vec2 currentScreen = currentProj.xy / currentProj.w * uResolution;
+            vec2 nextScreen = nextProj.xy / nextProj.w * uResolution;
+            
+            vec2 dir = normalize(nextScreen - currentScreen);
+            vec2 normal = vec2(-dir.y, dir.x);
+            
+            // Expand thickness for glow
+            float glowExpand = 1.0 + aGlow * 2.0;
+            vec2 offset = normal * aThickness * aSide * glowExpand;
+            
+            gl_Position = currentProj;
+            gl_Position.xy += offset / uResolution * currentProj.w;
+            
+            vColor = aColor;
+            vGlow = aGlow;
+            vEdge = abs(aSide); // How far from center (for glow falloff)
+        }
+    `;
+    
+    const lineFragmentShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 vColor;
+        in float vGlow;
+        in float vEdge;
+        
+        uniform float uGlowHue; // -1 means use base color, otherwise 0-360
+        
+        out vec4 fragColor;
+        
+        vec3 hsl2rgb(float h, float s, float l) {
+            // h is 0-360, s and l are 0-1
+            float hNorm = mod(h, 360.0) / 60.0; // 0-6
+            float c = (1.0 - abs(2.0 * l - 1.0)) * s;
+            float x = c * (1.0 - abs(mod(hNorm, 2.0) - 1.0));
+            float m = l - c / 2.0;
+            
+            vec3 rgb;
+            if (hNorm < 1.0) rgb = vec3(c, x, 0.0);
+            else if (hNorm < 2.0) rgb = vec3(x, c, 0.0);
+            else if (hNorm < 3.0) rgb = vec3(0.0, c, x);
+            else if (hNorm < 4.0) rgb = vec3(0.0, x, c);
+            else if (hNorm < 5.0) rgb = vec3(x, 0.0, c);
+            else rgb = vec3(c, 0.0, x);
+            
+            return rgb + m;
+        }
+        
+        void main() {
+            // Base color with glow boost
+            vec3 color = vColor;
+            
+            // Increase brightness based on glow (motion)
+            float glowIntensity = vGlow * 1.5;
+            
+            // Determine glow color - use uniform hue if set, otherwise brighten base color
+            vec3 glowTarget;
+            if (uGlowHue >= 0.0) {
+                // Use specified glow hue
+                glowTarget = hsl2rgb(uGlowHue, 1.0, 0.6);
+            } else {
+                // Use white (brightens the base color)
+                glowTarget = vec3(1.0);
+            }
+            
+            // Mix toward glow color when glowing
+            vec3 glowColor = mix(color, glowTarget, glowIntensity * 0.7);
+            
+            // Brighten the color
+            glowColor = glowColor * (1.0 + glowIntensity * 0.5);
+            
+            // Soft edge falloff for glow effect
+            float alpha = 1.0;
+            if (vGlow > 0.01) {
+                // Softer edges when glowing
+                float edgeFalloff = 1.0 - smoothstep(0.3, 1.0, vEdge);
+                alpha = mix(1.0, edgeFalloff, vGlow * 0.5);
+            }
+            
+            fragColor = vec4(glowColor, alpha);
+        }
+    `;
+    
+    // Metallic sphere shaders
+    const sphereVertexShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 aPosition;
+        in vec3 aNormal;
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform vec3 uSpherePos;
+        uniform float uSphereRadius;
+        
+        out vec3 vNormal;
+        out vec3 vWorldPos;
+        out vec3 vViewPos;
+        
+        void main() {
+            vec3 worldPos = aPosition * uSphereRadius + uSpherePos;
+            vec4 viewPos = uView * vec4(worldPos, 1.0);
+            
+            gl_Position = uProjection * viewPos;
+            
+            vNormal = aNormal;
+            vWorldPos = worldPos;
+            vViewPos = viewPos.xyz;
+        }
+    `;
+    
+    const sphereFragmentShaderSource = `#version 300 es
+        precision highp float;
+        
+        in vec3 vNormal;
+        in vec3 vWorldPos;
+        in vec3 vViewPos;
+        
+        uniform vec3 uCameraPos;
+        uniform float uInteractionStrength;
+        uniform float uVisibility;
+        
+        out vec4 fragColor;
+        
+        void main() {
+            vec3 normal = normalize(vNormal);
+            vec3 viewDir = normalize(uCameraPos - vWorldPos);
+            
+            // Metallic chrome look
+            // Base color - dark chrome
+            vec3 baseColor = vec3(0.15, 0.15, 0.18);
+            
+            // Fresnel effect for metallic rim
+            float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+            
+            // Fake environment reflection
+            vec3 reflectDir = reflect(-viewDir, normal);
+            
+            // Create a fake gradient environment
+            float envY = reflectDir.y * 0.5 + 0.5;
+            vec3 envColor = mix(
+                vec3(0.1, 0.1, 0.15),  // Dark bottom
+                vec3(0.6, 0.65, 0.7),   // Light top
+                envY
+            );
+            
+            // Add some color variation based on reflection angle
+            float envAngle = atan(reflectDir.z, reflectDir.x);
+            envColor += vec3(0.1, 0.05, 0.15) * sin(envAngle * 2.0) * 0.3;
+            
+            // Specular highlights
+            vec3 lightDir1 = normalize(vec3(1.0, 1.0, 0.5));
+            vec3 lightDir2 = normalize(vec3(-0.5, 0.8, -0.3));
+            
+            vec3 halfDir1 = normalize(lightDir1 + viewDir);
+            vec3 halfDir2 = normalize(lightDir2 + viewDir);
+            
+            float spec1 = pow(max(dot(normal, halfDir1), 0.0), 80.0);
+            float spec2 = pow(max(dot(normal, halfDir2), 0.0), 60.0);
+            
+            // Combine
+            vec3 color = baseColor;
+            color = mix(color, envColor, 0.7 + fresnel * 0.3);
+            color += vec3(1.0, 0.95, 0.9) * spec1 * 1.5;
+            color += vec3(0.8, 0.85, 1.0) * spec2 * 0.8;
+            
+            // Add subtle colored rim based on interaction strength
+            vec3 rimColor = vec3(1.0, 0.3, 0.8) * uInteractionStrength * 0.1;
+            color += rimColor * fresnel;
+            
+            // Slight glow when high interaction
+            color *= 1.0 + uInteractionStrength * 0.05;
+            
+            // Apply visibility to alpha with easing
+            float alpha = uVisibility * uVisibility * 0.95; // Quadratic ease for smoother fade
+            
+            fragColor = vec4(color, alpha);
+        }
+    `;
+    
+    // ========================================
+    // HAIR CLASS
+    // ========================================
+    
+    class Hair {
+        constructor(x, z, length, segments, hue) {
+            this.rootX = x;
+            this.rootZ = z;
+            this.length = length;
+            this.segments = segments;
+            this.segmentLength = length / segments;
+            this.hue = hue;
+            
+            // Each segment has position and velocity
+            this.positions = [];
+            this.velocities = [];
+            
+            // Initialize segments going upward (Y axis)
+            for (let i = 0; i <= segments; i++) {
+                this.positions.push({
+                    x: x,
+                    y: i * this.segmentLength,
+                    z: z
+                });
+                this.velocities.push({ x: 0, y: 0, z: 0 });
+            }
+            
+            // Output data
+            this.amplitude = 0;
+            this.phase = 0;
+            this.angle = 0;
+            this.angularVelocity = 0;
+            this.prevAngle = 0;
+        }
+        
+        update(dt, mousePos, mouseDown, mouseVel) {
+            const stiffness = config.stiffness * 50;
+            const damping = config.damping;
+            const gravity = config.gravity;
+            
+            // Wind
+            const windX = Math.sin(time * config.windSpeed + this.rootX * 0.5) * config.windStrength;
+            const windZ = Math.cos(time * config.windSpeed * 0.7 + this.rootZ * 0.5) * config.windStrength;
+            
+            // Root is fixed
+            this.positions[0].x = this.rootX;
+            this.positions[0].y = 0;
+            this.positions[0].z = this.rootZ;
+            
+            // Update each segment
+            for (let i = 1; i <= this.segments; i++) {
+                const pos = this.positions[i];
+                const vel = this.velocities[i];
+                const prevPos = this.positions[i - 1];
+                
+                // Target position (straight up from previous segment)
+                const targetX = prevPos.x;
+                const targetY = prevPos.y + this.segmentLength;
+                const targetZ = prevPos.z;
+                
+                // Spring force toward target
+                const dx = targetX - pos.x;
+                const dy = targetY - pos.y;
+                const dz = targetZ - pos.z;
+                
+                // Stiffness decreases along the hair (more flexible at tip)
+                const segmentStiffness = stiffness * (1 - i / this.segments * 0.5);
+                
+                vel.x += dx * segmentStiffness * dt;
+                vel.y += dy * segmentStiffness * dt;
+                vel.z += dz * segmentStiffness * dt;
+                
+                // Wind force
+                vel.x += windX * dt * 10;
+                vel.z += windZ * dt * 10;
+                
+                // Gravity (slight bend)
+                vel.y -= gravity * dt * 5;
+                
+                // Mouse interaction
+                if (mouseDown) {
+                    const mx = mousePos.x - pos.x;
+                    const mz = mousePos.z - pos.z;
+                    const dist = Math.sqrt(mx * mx + mz * mz);
+                    
+                    if (dist < config.interactionRadius) {
+                        const falloff = Math.pow(1 - dist / config.interactionRadius, config.interactionFalloff);
+                        const force = config.interactionStrength * falloff;
+                        
+                        // Push away from mouse + add mouse velocity
+                        if (dist > 0.01) {
+                            vel.x -= (mx / dist) * force * dt * 50;
+                            vel.z -= (mz / dist) * force * dt * 50;
+                        }
+                        
+                        // Add mouse movement influence
+                        vel.x += mouseVel.x * force * dt * 20;
+                        vel.z += mouseVel.z * force * dt * 20;
+                        
+                        // Push down slightly
+                        vel.y -= force * dt * 20;
+                    }
+                }
+                
+                // Apply damping
+                vel.x *= damping;
+                vel.y *= damping;
+                vel.z *= damping;
+                
+                // Update position
+                pos.x += vel.x * dt;
+                pos.y += vel.y * dt;
+                pos.z += vel.z * dt;
+                
+                // Constraint: maintain segment length
+                const toPrev = {
+                    x: pos.x - prevPos.x,
+                    y: pos.y - prevPos.y,
+                    z: pos.z - prevPos.z
+                };
+                const len = Math.sqrt(toPrev.x * toPrev.x + toPrev.y * toPrev.y + toPrev.z * toPrev.z);
+                if (len > 0.001) {
+                    const scale = this.segmentLength / len;
+                    pos.x = prevPos.x + toPrev.x * scale;
+                    pos.y = prevPos.y + toPrev.y * scale;
+                    pos.z = prevPos.z + toPrev.z * scale;
+                }
+            }
+            
+            // Calculate output metrics
+            this.calculateMetrics();
+        }
+        
+        calculateMetrics() {
+            const tip = this.positions[this.segments];
+            const root = this.positions[0];
+            
+            // Displacement from rest position
+            const restTipX = root.x;
+            const restTipY = this.length;
+            const restTipZ = root.z;
+            
+            const dispX = tip.x - restTipX;
+            const dispY = tip.y - restTipY;
+            const dispZ = tip.z - restTipZ;
+            
+            // Amplitude: total displacement
+            this.amplitude = Math.sqrt(dispX * dispX + dispY * dispY + dispZ * dispZ);
+            
+            // Angle: direction of bend in XZ plane
+            this.prevAngle = this.angle;
+            this.angle = Math.atan2(dispZ, dispX);
+            
+            // Angular velocity for phase detection
+            let angleDiff = this.angle - this.prevAngle;
+            // Wrap angle difference
+            if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            this.angularVelocity = angleDiff;
+            
+            // Phase: based on oscillation state (simplified)
+            // Using tip velocity to determine phase
+            const tipVel = this.velocities[this.segments];
+            const velMag = Math.sqrt(tipVel.x * tipVel.x + tipVel.z * tipVel.z);
+            
+            // Phase from 0-1 based on position in oscillation cycle
+            // Combining position and velocity to estimate phase
+            const posPhase = Math.atan2(dispZ, dispX);
+            const velPhase = Math.atan2(tipVel.z, tipVel.x);
+            this.phase = (posPhase + Math.PI) / (Math.PI * 2); // Normalize to 0-1
+        }
+        
+        reset() {
+            for (let i = 0; i <= this.segments; i++) {
+                this.positions[i].x = this.rootX;
+                this.positions[i].y = i * this.segmentLength;
+                this.positions[i].z = this.rootZ;
+                this.velocities[i].x = 0;
+                this.velocities[i].y = 0;
+                this.velocities[i].z = 0;
+            }
+        }
+    }
+    
+    // ========================================
+    // WebGL SETUP
+    // ========================================
+    
+    function initWebGL() {
+        canvas = document.getElementById('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        gl = canvas.getContext('webgl2', { antialias: true });
+        if (!gl) {
+            alert('WebGL2 not supported');
+            return false;
+        }
+        
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        
+        // Compile shaders
+        hairProgram = createProgram(lineVertexShaderSource, lineFragmentShaderSource);
+        sphereProgram = createProgram(sphereVertexShaderSource, sphereFragmentShaderSource);
+        
+        // Create sphere geometry
+        createSphereGeometry(32, 24);
+        
+        return true;
+    }
+    
+    function createSphereGeometry(segments, rings) {
+        const vertices = [];
+        const indices = [];
+        
+        // Generate vertices
+        for (let ring = 0; ring <= rings; ring++) {
+            const theta = ring * Math.PI / rings;
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+            
+            for (let seg = 0; seg <= segments; seg++) {
+                const phi = seg * 2 * Math.PI / segments;
+                const sinPhi = Math.sin(phi);
+                const cosPhi = Math.cos(phi);
+                
+                const x = cosPhi * sinTheta;
+                const y = cosTheta;
+                const z = sinPhi * sinTheta;
+                
+                // Position
+                vertices.push(x, y, z);
+                // Normal (same as position for unit sphere)
+                vertices.push(x, y, z);
+            }
+        }
+        
+        // Generate indices
+        for (let ring = 0; ring < rings; ring++) {
+            for (let seg = 0; seg < segments; seg++) {
+                const first = ring * (segments + 1) + seg;
+                const second = first + segments + 1;
+                
+                indices.push(first, second, first + 1);
+                indices.push(second, second + 1, first + 1);
+            }
+        }
+        
+        sphereVertexCount = indices.length;
+        
+        // Create buffers
+        sphereVBO = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVBO);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        sphereIBO = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIBO);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+    }
+    
+    function createShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+    
+    function createProgram(vsSource, fsSource) {
+        const vs = createShader(gl.VERTEX_SHADER, vsSource);
+        const fs = createShader(gl.FRAGMENT_SHADER, fsSource);
+        
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+            return null;
+        }
+        return program;
+    }
+    
+    // ========================================
+    // HAIR GENERATION
+    // ========================================
+    
+    function generateHairs() {
+        hairs = [];
+        const count = config.hairCount;
+        const size = config.fieldSize;
+        
+        if (config.gridPlacement) {
+            const gridSize = Math.ceil(Math.sqrt(count));
+            const spacing = size / gridSize;
+            
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    if (hairs.length >= count) break;
+                    
+                    const x = (i - gridSize / 2) * spacing + spacing / 2;
+                    const z = (j - gridSize / 2) * spacing + spacing / 2;
+                    const hue = config.baseHue + (Math.random() - 0.5) * config.hueRange;
+                    
+                    hairs.push(new Hair(x, z, config.hairLength, config.segments, hue));
+                }
+            }
+        } else {
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * size;
+                const z = (Math.random() - 0.5) * size;
+                const hue = config.baseHue + (Math.random() - 0.5) * config.hueRange;
+                
+                hairs.push(new Hair(x, z, config.hairLength, config.segments, hue));
+            }
+        }
+        
+        document.getElementById('hairCountStat').textContent = hairs.length;
+    }
+    
+    // ========================================
+    // RENDERING
+    // ========================================
+    
+    function hslToRgb(h, s, l) {
+        h = h / 360;
+        s = s / 100;
+        l = l / 100;
+        
+        let r, g, b;
+        
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        
+        return [r, g, b];
+    }
+    
+    function buildHairGeometry() {
+        const vertices = [];
+        
+        for (const hair of hairs) {
+            // Glow based on amplitude (motion) scaled by intensity
+            const glow = Math.min(hair.amplitude / config.hairLength, 1.0) * config.glowIntensity;
+            
+            for (let i = 0; i < hair.segments; i++) {
+                const pos = hair.positions[i];
+                const nextPos = hair.positions[i + 1];
+                
+                // Color gradient along hair
+                const t = i / hair.segments;
+                const brightness = 50 + t * 30 * config.tipBrightness;
+                const [r, g, b] = hslToRgb(hair.hue, config.saturation, brightness);
+                
+                // Thickness varies along hair
+                const thickness = config.hairThickness * (1 - t * 0.5);
+                
+                // Glow increases toward tip
+                const segmentGlow = glow * (0.5 + t * 0.5);
+                
+                // Two triangles per segment (quad)
+                // Side -1
+                vertices.push(
+                    pos.x, pos.y, pos.z,
+                    nextPos.x, nextPos.y, nextPos.z,
+                    r, g, b,
+                    -1, thickness, segmentGlow
+                );
+                // Side +1
+                vertices.push(
+                    pos.x, pos.y, pos.z,
+                    nextPos.x, nextPos.y, nextPos.z,
+                    r, g, b,
+                    1, thickness, segmentGlow
+                );
+                // Side -1 at next
+                vertices.push(
+                    nextPos.x, nextPos.y, nextPos.z,
+                    pos.x, pos.y, pos.z,
+                    r, g, b,
+                    -1, thickness, segmentGlow
+                );
+                
+                // Second triangle
+                vertices.push(
+                    pos.x, pos.y, pos.z,
+                    nextPos.x, nextPos.y, nextPos.z,
+                    r, g, b,
+                    1, thickness, segmentGlow
+                );
+                vertices.push(
+                    nextPos.x, nextPos.y, nextPos.z,
+                    pos.x, pos.y, pos.z,
+                    r, g, b,
+                    1, thickness, segmentGlow
+                );
+                vertices.push(
+                    nextPos.x, nextPos.y, nextPos.z,
+                    pos.x, pos.y, pos.z,
+                    r, g, b,
+                    -1, thickness, segmentGlow
+                );
+            }
+        }
+        
+        return new Float32Array(vertices);
+    }
+    
+    function render() {
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0.02, 0.02, 0.05, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        
+        gl.useProgram(hairProgram);
+        
+        // Build geometry
+        const vertices = buildHairGeometry();
+        
+        // Create/update buffer
+        if (!hairVBO) hairVBO = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, hairVBO);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+        
+        // Setup attributes
+        const stride = 12 * 4; // 12 floats per vertex (added glow)
+        
+        const posLoc = gl.getAttribLocation(hairProgram, 'aPosition');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
+        
+        const nextPosLoc = gl.getAttribLocation(hairProgram, 'aNextPosition');
+        gl.enableVertexAttribArray(nextPosLoc);
+        gl.vertexAttribPointer(nextPosLoc, 3, gl.FLOAT, false, stride, 3 * 4);
+        
+        const colorLoc = gl.getAttribLocation(hairProgram, 'aColor');
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, stride, 6 * 4);
+        
+        const sideLoc = gl.getAttribLocation(hairProgram, 'aSide');
+        gl.enableVertexAttribArray(sideLoc);
+        gl.vertexAttribPointer(sideLoc, 1, gl.FLOAT, false, stride, 9 * 4);
+        
+        const thicknessLoc = gl.getAttribLocation(hairProgram, 'aThickness');
+        gl.enableVertexAttribArray(thicknessLoc);
+        gl.vertexAttribPointer(thicknessLoc, 1, gl.FLOAT, false, stride, 10 * 4);
+        
+        const glowLoc = gl.getAttribLocation(hairProgram, 'aGlow');
+        gl.enableVertexAttribArray(glowLoc);
+        gl.vertexAttribPointer(glowLoc, 1, gl.FLOAT, false, stride, 11 * 4);
+        
+        // Matrices
+        const projection = perspectiveMatrix(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
+        const view = viewMatrix();
+        
+        gl.uniformMatrix4fv(gl.getUniformLocation(hairProgram, 'uProjection'), false, projection);
+        gl.uniformMatrix4fv(gl.getUniformLocation(hairProgram, 'uView'), false, view);
+        gl.uniform2f(gl.getUniformLocation(hairProgram, 'uResolution'), canvas.width, canvas.height);
+        gl.uniform1f(gl.getUniformLocation(hairProgram, 'uGlowHue'), config.glowHue);
+        
+        // Draw hairs
+        gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 12);
+        
+        // Animate sphere visibility
+        if (mouseDown && config.showSphere) {
+            sphereVisible = 1; // Instant fade in
+            sphereLastPos = { ...mousePos };
+        } else {
+            sphereVisible = Math.max(0, sphereVisible - 1.5 * 0.016); // Slow fade out (~0.7 seconds)
+        }
+        
+        // Draw interaction sphere when visible
+        if (sphereVisible > 0.01 && config.showSphere) {
+            renderSphere(projection, view, sphereVisible);
+        }
+    }
+    
+    function renderSphere(projection, view, visibility) {
+        gl.useProgram(sphereProgram);
+        
+        // Bind sphere geometry
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVBO);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIBO);
+        
+        // Setup attributes
+        const stride = 6 * 4; // 3 pos + 3 normal
+        
+        const posLoc = gl.getAttribLocation(sphereProgram, 'aPosition');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, stride, 0);
+        
+        const normalLoc = gl.getAttribLocation(sphereProgram, 'aNormal');
+        gl.enableVertexAttribArray(normalLoc);
+        gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, stride, 3 * 4);
+        
+        // Uniforms
+        gl.uniformMatrix4fv(gl.getUniformLocation(sphereProgram, 'uProjection'), false, projection);
+        gl.uniformMatrix4fv(gl.getUniformLocation(sphereProgram, 'uView'), false, view);
+        
+        // Sphere position - use last known position, lift it up a bit based on radius
+        // Scale radius by visibility for shrink effect
+        const baseRadius = config.interactionRadius * 0.4;
+        const sphereRadius = baseRadius * visibility;
+        
+        // Use current mouse pos if down, otherwise use last position
+        const posX = mouseDown ? mousePos.x : sphereLastPos.x;
+        const posZ = mouseDown ? mousePos.z : sphereLastPos.z;
+        
+        gl.uniform3f(gl.getUniformLocation(sphereProgram, 'uSpherePos'), 
+            posX, sphereRadius * 0.5, posZ);
+        gl.uniform1f(gl.getUniformLocation(sphereProgram, 'uSphereRadius'), sphereRadius);
+        
+        // Camera position for reflections
+        const rotationX = -config.cameraTilt;
+        const distance = config.cameraDistance;
+        const cx = Math.cos(rotationX);
+        const sx = Math.sin(rotationX);
+        gl.uniform3f(gl.getUniformLocation(sphereProgram, 'uCameraPos'),
+            distance * sx, distance * cx, 0);
+        
+        gl.uniform1f(gl.getUniformLocation(sphereProgram, 'uInteractionStrength'), config.interactionStrength);
+        gl.uniform1f(gl.getUniformLocation(sphereProgram, 'uVisibility'), visibility);
+        
+        // Draw
+        gl.drawElements(gl.TRIANGLES, sphereVertexCount, gl.UNSIGNED_SHORT, 0);
+    }
+    
+    function perspectiveMatrix(fov, aspect, near, far) {
+        const f = 1.0 / Math.tan(fov / 2);
+        const nf = 1 / (near - far);
+        
+        return new Float32Array([
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (far + near) * nf, -1,
+            0, 0, 2 * far * near * nf, 0
+        ]);
+    }
+    
+    function viewMatrix() {
+        // Use config for camera tilt (rotationX) and distance
+        const rotationX = -config.cameraTilt; // Negative to look down
+        const rotationY = 0;
+        const distance = config.cameraDistance;
+        
+        const cx = Math.cos(rotationX);
+        const sx = Math.sin(rotationX);
+        const cy = Math.cos(rotationY);
+        const sy = Math.sin(rotationY);
+        
+        const eyeX = distance * cy * sx;
+        const eyeY = distance * cx;
+        const eyeZ = distance * sy * sx;
+        
+        // Look at origin
+        const forward = normalize([-eyeX, -eyeY, -eyeZ]);
+        const right = normalize(cross([0, 1, 0], forward));
+        const up = cross(forward, right);
+        
+        return new Float32Array([
+            right[0], up[0], -forward[0], 0,
+            right[1], up[1], -forward[1], 0,
+            right[2], up[2], -forward[2], 0,
+            -dot(right, [eyeX, eyeY, eyeZ]),
+            -dot(up, [eyeX, eyeY, eyeZ]),
+            dot(forward, [eyeX, eyeY, eyeZ]),
+            1
+        ]);
+    }
+    
+    function normalize(v) {
+        const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        return [v[0]/len, v[1]/len, v[2]/len];
+    }
+    
+    function cross(a, b) {
+        return [
+            a[1]*b[2] - a[2]*b[1],
+            a[2]*b[0] - a[0]*b[2],
+            a[0]*b[1] - a[1]*b[0]
+        ];
+    }
+    
+    function dot(a, b) {
+        return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+    }
+    
+    // ========================================
+    // MOUSE INTERACTION
+    // ========================================
+    
+    function screenToWorld(screenX, screenY) {
+        // Convert screen coordinates to world XZ plane (Y=0) using ray-plane intersection
+        const ndcX = (screenX / canvas.width) * 2 - 1;
+        const ndcY = 1 - (screenY / canvas.height) * 2;  // Flip Y for NDC
+        
+        // Camera position from config
+        const rotationX = -config.cameraTilt;
+        const rotationY = 0;
+        const distance = config.cameraDistance;
+        
+        const cx = Math.cos(rotationX);
+        const sx = Math.sin(rotationX);
+        const cy = Math.cos(rotationY);
+        const sy = Math.sin(rotationY);
+        
+        const eyeX = distance * cy * sx;
+        const eyeY = distance * cx;
+        const eyeZ = distance * sy * sx;
+        
+        // Camera basis vectors
+        const forward = normalize([-eyeX, -eyeY, -eyeZ]);
+        const right = normalize(cross([0, 1, 0], forward));
+        const up = cross(forward, right);
+        
+        // Calculate ray direction from camera through screen point
+        const fov = Math.PI / 4;
+        const aspect = canvas.width / canvas.height;
+        const tanHalfFov = Math.tan(fov / 2);
+        
+        const rayDirX = forward[0] + right[0] * ndcX * tanHalfFov * aspect + up[0] * ndcY * tanHalfFov;
+        const rayDirY = forward[1] + right[1] * ndcX * tanHalfFov * aspect + up[1] * ndcY * tanHalfFov;
+        const rayDirZ = forward[2] + right[2] * ndcX * tanHalfFov * aspect + up[2] * ndcY * tanHalfFov;
+        
+        // Intersect ray with Y=0 plane
+        // Ray: P = eye + t * dir
+        // Plane: Y = 0
+        // Solve: eyeY + t * rayDirY = 0
+        if (Math.abs(rayDirY) < 0.0001) {
+            // Ray parallel to plane
+            return { x: 0, y: 0, z: 0 };
+        }
+        
+        const t = -eyeY / rayDirY;
+        
+        return {
+            x: eyeX + t * rayDirX,
+            y: 0,
+            z: eyeZ + t * rayDirZ
+        };
+    }
+    
+    function setupEventListeners() {
+        canvas.addEventListener('mousedown', (e) => {
+            mouseDown = true;
+            const world = screenToWorld(e.clientX, e.clientY);
+            mousePos = world;
+            prevMousePos = { ...world };
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            mouseDown = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            mouseDown = false;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            prevMousePos = { ...mousePos };
+            mousePos = screenToWorld(e.clientX, e.clientY);
+        });
+        
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouseDown = true;
+            const touch = e.touches[0];
+            const world = screenToWorld(touch.clientX, touch.clientY);
+            mousePos = world;
+            prevMousePos = { ...world };
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            mouseDown = false;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            prevMousePos = { ...mousePos };
+            mousePos = screenToWorld(touch.clientX, touch.clientY);
+        });
+        
+        // Resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // UI toggle
+        const toggleBtn = document.getElementById('toggle-ui');
+        const ui = document.getElementById('ui');
+        const stats = document.getElementById('stats');
+        let uiVisible = true;
+        
+        toggleBtn.addEventListener('click', () => {
+            uiVisible = !uiVisible;
+            ui.classList.toggle('hidden', !uiVisible);
+            stats.classList.toggle('hidden', !uiVisible);
+            toggleBtn.textContent = uiVisible ? '☰ UI' : '☰';
+        });
+        
+        // Keyboard shortcut: H to toggle UI
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'h' || e.key === 'H') {
+                uiVisible = !uiVisible;
+                ui.classList.toggle('hidden', !uiVisible);
+                stats.classList.toggle('hidden', !uiVisible);
+                toggleBtn.textContent = uiVisible ? '☰ UI' : '☰';
+            }
+        });
+        
+        // UI controls
+        setupUIControls();
+    }
+    
+    function setupUIControls() {
+        const controls = [
+            'cameraTilt', 'cameraDistance',
+            'hairLength', 'hairThickness', 'segments', 'fieldSize',
+            'stiffness', 'damping', 'gravity', 'windStrength', 'windSpeed',
+            'interactionStrength', 'interactionRadius', 'interactionFalloff', 'impulseStrength',
+            'baseHue', 'hueRange', 'saturation', 'tipBrightness', 'glowIntensity', 'glowHue',
+            'oscRate'
+        ];
+        
+        controls.forEach(id => {
+            const input = document.getElementById(id);
+            const valueSpan = document.getElementById(id + 'Val');
+            
+            input.addEventListener('input', () => {
+                let val = parseFloat(input.value);
+                config[id] = val;
+                
+                // Format display value
+                if (id === 'baseHue' || id === 'hueRange') {
+                    valueSpan.textContent = val + '°';
+                } else if (id === 'glowHue') {
+                    valueSpan.textContent = val < 0 ? 'auto' : val + '°';
+                    // Update glow hue preview
+                    const preview = document.getElementById('glowHuePreview');
+                    if (preview) {
+                        preview.style.backgroundColor = val < 0 ? 'transparent' : `hsl(${val}, 100%, 50%)`;
+                        preview.style.borderColor = val < 0 ? '#333' : '#444';
+                    }
+                } else if (id === 'saturation') {
+                    valueSpan.textContent = val + '%';
+                } else {
+                    valueSpan.textContent = val;
+                }
+                
+                // Update color preview
+                if (id === 'baseHue') {
+                    const preview = document.getElementById('baseHuePreview');
+                    preview.style.backgroundColor = `hsl(${val}, 100%, 50%)`;
+                }
+                
+                // Send to Max
+                sendParamToMax(id, val);
+            });
+        });
+        
+        // Checkboxes
+        document.getElementById('gridPlacement').addEventListener('change', (e) => {
+            config.gridPlacement = e.target.checked;
+        });
+        
+        document.getElementById('showSphere').addEventListener('change', (e) => {
+            config.showSphere = e.target.checked;
+        });
+        
+        document.getElementById('oscEnabled').addEventListener('change', (e) => {
+            config.oscEnabled = e.target.checked;
+        });
+        
+        document.getElementById('oscSummaryOnly').addEventListener('change', (e) => {
+            config.oscSummaryOnly = e.target.checked;
+        });
+        
+        document.getElementById('oscGridEnabled').addEventListener('change', (e) => {
+            config.oscGridEnabled = e.target.checked;
+        });
+        
+        // Hair count select (powers of 2)
+        document.getElementById('hairCount').addEventListener('change', (e) => {
+            config.hairCount = parseInt(e.target.value);
+            sendParamToMax('hairCount', config.hairCount);
+        });
+        
+        // Grid resolution selects (powers of 2)
+        document.getElementById('oscGridResX').addEventListener('change', (e) => {
+            config.oscGridResX = parseInt(e.target.value);
+            sendParamToMax('oscGridResX', config.oscGridResX);
+        });
+        
+        document.getElementById('oscGridResY').addEventListener('change', (e) => {
+            config.oscGridResY = parseInt(e.target.value);
+            sendParamToMax('oscGridResY', config.oscGridResY);
+        });
+        
+        // OSC Address text input
+        document.getElementById('oscAddress').addEventListener('input', (e) => {
+            let addr = e.target.value.trim();
+            // Ensure it starts with /
+            if (addr && !addr.startsWith('/')) {
+                addr = '/' + addr;
+                e.target.value = addr;
+            }
+            config.oscAddress = addr || '/hairfield';
+        });
+        
+        // Initialize color previews
+        document.getElementById('baseHuePreview').style.backgroundColor = 
+            `hsl(${config.baseHue}, 100%, 50%)`;
+        document.getElementById('glowHuePreview').style.backgroundColor = 
+            config.glowHue < 0 ? 'transparent' : `hsl(${config.glowHue}, 100%, 50%)`;
+    }
+    
+    // ========================================
+    // MAX API INTEGRATION
+    // ========================================
+    
+    async function initMaxAPI() {
+        try {
+            // Check if Max API is available
+            if (typeof window.max !== 'undefined') {
+                maxAPI = window.max;
+                maxAPIConnected = true;
+                document.getElementById('osc-status').textContent = 'Max API: Connected';
+                document.getElementById('osc-status').classList.add('connected');
+                
+                // Setup handlers for incoming messages
+                
+                // Generic setParam handler - works for any param
+                maxAPI.bindInlet('setParam', (param, value) => {
+                    setParamFromExternal(param, value);
+                });
+                
+                // Individual param handlers for direct OSC-style access
+                // Camera
+                maxAPI.bindInlet('cameraTilt', (v) => setParamFromExternal('cameraTilt', v));
+                maxAPI.bindInlet('cameraDistance', (v) => setParamFromExternal('cameraDistance', v));
+                
+                // Field setup
+                maxAPI.bindInlet('hairCount', (v) => setParamFromExternal('hairCount', v));
+                maxAPI.bindInlet('hairLength', (v) => setParamFromExternal('hairLength', v));
+                maxAPI.bindInlet('hairThickness', (v) => setParamFromExternal('hairThickness', v));
+                maxAPI.bindInlet('segments', (v) => setParamFromExternal('segments', v));
+                maxAPI.bindInlet('fieldSize', (v) => setParamFromExternal('fieldSize', v));
+                maxAPI.bindInlet('gridPlacement', (v) => setParamFromExternal('gridPlacement', v));
+                
+                // Physics
+                maxAPI.bindInlet('stiffness', (v) => setParamFromExternal('stiffness', v));
+                maxAPI.bindInlet('damping', (v) => setParamFromExternal('damping', v));
+                maxAPI.bindInlet('gravity', (v) => setParamFromExternal('gravity', v));
+                maxAPI.bindInlet('windStrength', (v) => setParamFromExternal('windStrength', v));
+                maxAPI.bindInlet('windSpeed', (v) => setParamFromExternal('windSpeed', v));
+                
+                // Interaction
+                maxAPI.bindInlet('showSphere', (v) => setParamFromExternal('showSphere', v));
+                maxAPI.bindInlet('interactionStrength', (v) => setParamFromExternal('interactionStrength', v));
+                maxAPI.bindInlet('interactionRadius', (v) => setParamFromExternal('interactionRadius', v));
+                maxAPI.bindInlet('interactionFalloff', (v) => setParamFromExternal('interactionFalloff', v));
+                maxAPI.bindInlet('impulseStrength', (v) => setParamFromExternal('impulseStrength', v));
+                
+                // Colors
+                maxAPI.bindInlet('baseHue', (v) => setParamFromExternal('baseHue', v));
+                maxAPI.bindInlet('hueRange', (v) => setParamFromExternal('hueRange', v));
+                maxAPI.bindInlet('saturation', (v) => setParamFromExternal('saturation', v));
+                maxAPI.bindInlet('tipBrightness', (v) => setParamFromExternal('tipBrightness', v));
+                maxAPI.bindInlet('glowIntensity', (v) => setParamFromExternal('glowIntensity', v));
+                maxAPI.bindInlet('glowHue', (v) => setParamFromExternal('glowHue', v));
+                
+                // OSC settings
+                maxAPI.bindInlet('oscRate', (v) => setParamFromExternal('oscRate', v));
+                maxAPI.bindInlet('oscEnabled', (v) => setParamFromExternal('oscEnabled', v));
+                maxAPI.bindInlet('oscSummaryOnly', (v) => setParamFromExternal('oscSummaryOnly', v));
+                maxAPI.bindInlet('oscGridEnabled', (v) => setParamFromExternal('oscGridEnabled', v));
+                maxAPI.bindInlet('oscGridResX', (v) => setParamFromExternal('oscGridResX', v));
+                maxAPI.bindInlet('oscGridResY', (v) => setParamFromExternal('oscGridResY', v));
+                
+                // Actions
+                maxAPI.bindInlet('regenerate', () => {
+                    regenerateField();
+                });
+                
+                maxAPI.bindInlet('reset', () => {
+                    resetHairs();
+                });
+                
+                maxAPI.bindInlet('impulse', (strength) => {
+                    applyImpulse(strength || 1);
+                });
+                
+                // Query current params
+                maxAPI.bindInlet('getParams', () => {
+                    sendAllParamsToMax();
+                });
+                
+                // Query single param
+                maxAPI.bindInlet('getParam', (param) => {
+                    if (config.hasOwnProperty(param)) {
+                        sendToMax('param', param, config[param]);
+                    }
+                });
+                
+                console.log('Max API connected');
+                updateConnectionStatus();
+            } else {
+                // No Max API, try WebSocket connection
+                initWebSocket();
+            }
+        } catch (e) {
+            console.log('Max API not available:', e);
+            // Try WebSocket connection
+            initWebSocket();
+        }
+    }
+    
+    function setParamFromExternal(param, value) {
+        if (!config.hasOwnProperty(param)) return;
+        
+        // Handle boolean params (checkboxes)
+        const booleanParams = ['gridPlacement', 'showSphere', 'oscEnabled', 'oscSummaryOnly', 'oscGridEnabled'];
+        
+        // Handle select elements with power of 2 values
+        const selectParams = {
+            'hairCount': [256, 512, 1024, 2048, 4096],
+            'oscGridResX': [2, 4, 8, 16, 32, 64],
+            'oscGridResY': [2, 4, 8, 16, 32, 64]
+        };
+        
+        if (selectParams[param]) {
+            value = parseInt(value);
+            const validValues = selectParams[param];
+            // Snap to nearest valid power of 2
+            if (!validValues.includes(value)) {
+                value = validValues.reduce((prev, curr) => 
+                    Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+                );
+            }
+            config[param] = value;
+            const select = document.getElementById(param);
+            if (select) select.value = value;
+        } else if (booleanParams.includes(param)) {
+            // Accept 0/1, true/false, "true"/"false"
+            value = value === true || value === 1 || value === '1' || value === 'true';
+            config[param] = value;
+            
+            const checkbox = document.getElementById(param);
+            if (checkbox) checkbox.checked = value;
+        } else {
+            // Numeric params
+            value = parseFloat(value);
+            if (isNaN(value)) return;
+            
+            config[param] = value;
+            
+            const input = document.getElementById(param);
+            if (input) {
+                input.value = value;
+                const valueSpan = document.getElementById(param + 'Val');
+                if (valueSpan) {
+                    if (param === 'baseHue' || param === 'hueRange') {
+                        valueSpan.textContent = value + '°';
+                    } else if (param === 'saturation') {
+                        valueSpan.textContent = value + '%';
+                    } else {
+                        valueSpan.textContent = value;
+                    }
+                }
+                
+                // Update color preview for baseHue
+                if (param === 'baseHue') {
+                    const preview = document.getElementById('baseHuePreview');
+                    if (preview) preview.style.backgroundColor = `hsl(${value}, 100%, 50%)`;
+                }
+            }
+        }
+        
+        // Echo back the change
+        sendToMax('param', param, config[param]);
+    }
+    
+    function sendAllParamsToMax() {
+        for (const [key, value] of Object.entries(config)) {
+            sendToMax('param', key, value);
+        }
+    }
+    
+    function sendToMax(address, ...args) {
+        // Send via Max API if available
+        if (maxAPIConnected && maxAPI) {
+            try {
+                maxAPI.outlet(address, ...args);
+            } catch (e) {
+                console.error('Error sending to Max:', e);
+            }
+        }
+        
+        // Send via WebSocket if connected
+        if (wsConnected && wsConnection) {
+            sendToWebSocket(address, args);
+        }
+    }
+    
+    function sendToWebSocket(address, args) {
+        if (!wsConnected || !wsConnection) return;
+        
+        try {
+            const baseAddr = config.oscAddress || '/hairfield';
+            
+            // Convert to typed message format for the server
+            let msg;
+            switch (address) {
+                case 'summary':
+                    msg = {
+                        type: 'summary',
+                        address: baseAddr,
+                        avgAmplitude: args[0],
+                        maxAmplitude: args[1],
+                        activity: args[2],
+                        activeCount: args[3]
+                    };
+                    break;
+                case 'param':
+                    msg = { type: 'param', address: baseAddr, name: args[0], value: args[1] };
+                    break;
+                case 'gridAmplitude':
+                    msg = { type: 'gridAmplitude', address: baseAddr, resX: args[0], resY: args[1], values: args.slice(2) };
+                    break;
+                case 'gridPhase':
+                    msg = { type: 'gridPhase', address: baseAddr, resX: args[0], resY: args[1], values: args.slice(2) };
+                    break;
+                case 'gridAngle':
+                    msg = { type: 'gridAngle', address: baseAddr, resX: args[0], resY: args[1], values: args.slice(2) };
+                    break;
+                case 'gridCount':
+                    msg = { type: 'gridCount', address: baseAddr, resX: args[0], resY: args[1], values: args.slice(2) };
+                    break;
+                case 'amplitudes':
+                    msg = { type: 'amplitudes', address: baseAddr, values: args };
+                    break;
+                case 'phases':
+                    msg = { type: 'phases', address: baseAddr, values: args };
+                    break;
+                case 'angles':
+                    msg = { type: 'angles', address: baseAddr, values: args };
+                    break;
+                case 'impulse':
+                    msg = { type: 'impulse', address: baseAddr, strength: args[0] };
+                    break;
+                case 'regenerated':
+                    msg = { type: 'regenerated', address: baseAddr, count: args[0] };
+                    break;
+                case 'reset':
+                    msg = { type: 'reset', address: baseAddr };
+                    break;
+                default:
+                    msg = { address: baseAddr + '/' + address, args: args };
+            }
+            
+            wsConnection.send(JSON.stringify(msg));
+        } catch (e) {
+            console.error('WebSocket send error:', e);
+        }
+    }
+    
+    function initWebSocket() {
+        // Connect to WebSocket server on same host
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        
+        try {
+            wsConnection = new WebSocket(wsUrl);
+            
+            wsConnection.onopen = () => {
+                wsConnected = true;
+                console.log('WebSocket connected');
+                updateConnectionStatus();
+            };
+            
+            wsConnection.onclose = () => {
+                wsConnected = false;
+                console.log('WebSocket disconnected');
+                updateConnectionStatus();
+                
+                // Try to reconnect after 2 seconds
+                setTimeout(initWebSocket, 2000);
+            };
+            
+            wsConnection.onerror = (err) => {
+                console.log('WebSocket error - server may not be running');
+                wsConnected = false;
+            };
+            
+            wsConnection.onmessage = (event) => {
+                // Handle incoming messages from server (for future bidirectional control)
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.param && msg.value !== undefined) {
+                        setParamFromExternal(msg.param, msg.value);
+                    }
+                } catch (e) {
+                    console.error('WebSocket message parse error:', e);
+                }
+            };
+        } catch (e) {
+            console.log('WebSocket not available');
+        }
+    }
+    
+    function updateConnectionStatus() {
+        const statusEl = document.getElementById('osc-status');
+        if (maxAPIConnected) {
+            statusEl.textContent = 'Max API: Connected';
+            statusEl.classList.add('connected');
+        } else if (wsConnected) {
+            statusEl.textContent = 'WebSocket: Connected (OSC Bridge)';
+            statusEl.classList.add('connected');
+        } else {
+            statusEl.textContent = 'Not connected (standalone mode)';
+            statusEl.classList.remove('connected');
+        }
+    }
+    
+    function sendParamToMax(param, value) {
+        sendToMax('param', param, value);
+    }
+    
+    function sendHairData() {
+        if (!config.oscEnabled) return;
+        
+        const now = performance.now();
+        const interval = 1000 / config.oscRate;
+        
+        if (now - lastOSCTime < interval) return;
+        lastOSCTime = now;
+        
+        // Calculate summary statistics
+        let totalAmplitude = 0;
+        let maxAmplitude = 0;
+        let activeCount = 0;
+        const threshold = 0.05;
+        
+        const hairData = [];
+        
+        for (let i = 0; i < hairs.length; i++) {
+            const hair = hairs[i];
+            totalAmplitude += hair.amplitude;
+            maxAmplitude = Math.max(maxAmplitude, hair.amplitude);
+            if (hair.amplitude > threshold) activeCount++;
+            
+            if (!config.oscSummaryOnly) {
+                hairData.push({
+                    index: i,
+                    amplitude: hair.amplitude,
+                    phase: hair.phase,
+                    angle: hair.angle,
+                    x: hair.rootX,
+                    z: hair.rootZ
+                });
+            }
+        }
+        
+        const avgAmplitude = totalAmplitude / hairs.length;
+        const activity = activeCount / hairs.length;
+        
+        // Update stats display
+        document.getElementById('avgAmp').textContent = avgAmplitude.toFixed(3);
+        document.getElementById('maxAmp').textContent = maxAmplitude.toFixed(3);
+        document.getElementById('activity').textContent = (activity * 100).toFixed(1) + '%';
+        
+        // Send summary to Max
+        sendToMax('summary', avgAmplitude, maxAmplitude, activity, activeCount);
+        
+        // Send per-hair data if not summary only
+        if (!config.oscSummaryOnly && (maxAPIConnected || wsConnected)) {
+            // Send as a list for efficiency
+            const amplitudes = hairs.map(h => h.amplitude);
+            const phases = hairs.map(h => h.phase);
+            const angles = hairs.map(h => h.angle);
+            
+            sendToMax('amplitudes', ...amplitudes);
+            sendToMax('phases', ...phases);
+            sendToMax('angles', ...angles);
+        }
+        
+        // Send grid-aggregated data
+        if (config.oscGridEnabled && (maxAPIConnected || wsConnected)) {
+            sendGridData();
+        }
+    }
+    
+    function sendGridData() {
+        const resX = config.oscGridResX;
+        const resY = config.oscGridResY;
+        const halfSize = config.fieldSize / 2;
+        
+        // Initialize grid cells
+        const gridAmplitude = [];
+        const gridPhase = [];
+        const gridAngle = [];
+        const gridCount = [];
+        
+        for (let i = 0; i < resX * resY; i++) {
+            gridAmplitude.push(0);
+            gridPhase.push(0);
+            gridAngle.push(0);
+            gridCount.push(0);
+        }
+        
+        // Aggregate hairs into grid cells
+        for (const hair of hairs) {
+            // Map hair position to grid cell
+            const normX = (hair.rootX + halfSize) / config.fieldSize; // 0-1
+            const normZ = (hair.rootZ + halfSize) / config.fieldSize; // 0-1
+            
+            const cellX = Math.min(Math.floor(normX * resX), resX - 1);
+            const cellY = Math.min(Math.floor(normZ * resY), resY - 1);
+            const cellIndex = cellY * resX + cellX;
+            
+            if (cellIndex >= 0 && cellIndex < resX * resY) {
+                gridAmplitude[cellIndex] += hair.amplitude;
+                gridPhase[cellIndex] += hair.phase;
+                gridAngle[cellIndex] += hair.angle;
+                gridCount[cellIndex]++;
+            }
+        }
+        
+        // Average the values in each cell
+        for (let i = 0; i < resX * resY; i++) {
+            if (gridCount[i] > 0) {
+                gridAmplitude[i] /= gridCount[i];
+                gridPhase[i] /= gridCount[i];
+                gridAngle[i] /= gridCount[i];
+            }
+        }
+        
+        // Send grid data - format: gridAmplitude <resX> <resY> <values...>
+        sendToMax('gridAmplitude', resX, resY, ...gridAmplitude);
+        sendToMax('gridPhase', resX, resY, ...gridPhase);
+        sendToMax('gridAngle', resX, resY, ...gridAngle);
+        sendToMax('gridCount', resX, resY, ...gridCount);
+    }
+    
+    // ========================================
+    // UTILITY FUNCTIONS
+    // ========================================
+    
+    function regenerateField() {
+        generateHairs();
+        sendToMax('regenerated', config.hairCount);
+    }
+    
+    function resetHairs() {
+        for (const hair of hairs) {
+            hair.reset();
+        }
+        sendToMax('reset');
+    }
+    
+    function applyImpulse(strength) {
+        // Use provided strength or fall back to config value
+        const power = (strength !== undefined ? strength : 1) * config.impulseStrength;
+        const angle = Math.random() * Math.PI * 2;
+        
+        for (const hair of hairs) {
+            for (let i = 1; i <= hair.segments; i++) {
+                const factor = i / hair.segments;
+                hair.velocities[i].x += Math.cos(angle) * power * factor * (0.5 + Math.random() * 0.5);
+                hair.velocities[i].z += Math.sin(angle) * power * factor * (0.5 + Math.random() * 0.5);
+            }
+        }
+        
+        sendToMax('impulse', power);
+    }
+    
+    // ========================================
+    // MAIN LOOP
+    // ========================================
+    
+    let lastTime = performance.now();
+    
+    function update() {
+        const now = performance.now();
+        const dt = Math.min((now - lastTime) / 1000, 0.05); // Cap delta time
+        lastTime = now;
+        time += dt;
+        
+        // Calculate mouse velocity
+        const mouseVel = {
+            x: (mousePos.x - prevMousePos.x) / dt,
+            y: 0,
+            z: (mousePos.z - prevMousePos.z) / dt
+        };
+        
+        // Update physics
+        for (const hair of hairs) {
+            hair.update(dt, mousePos, mouseDown, mouseVel);
+        }
+        
+        // Render
+        render();
+        
+        // Send OSC data
+        sendHairData();
+        
+        // FPS counter
+        frameCount++;
+        if (now - lastFPSTime >= 1000) {
+            currentFPS = frameCount;
+            frameCount = 0;
+            lastFPSTime = now;
+            document.getElementById('fps').textContent = currentFPS;
+        }
+        
+        requestAnimationFrame(update);
+    }
+    
+    // ========================================
+    // INITIALIZATION
+    // ========================================
+    
+    async function init() {
+        if (!initWebGL()) return;
+        
+        generateHairs();
+        setupEventListeners();
+        await initMaxAPI();
+        
+        // Start main loop
+        update();
+        
+        console.log('Hair Field initialized');
+        console.log('Controls: Click and drag to interact with hairs');
+    }
+    
+    init();
+    </script>
+</body>
+</html>
