@@ -2,7 +2,6 @@
 
 A GPU-accelerated interactive hair/tendril simulation with OSC output for audio-visual performance and sonification.
 
-![Hair Field Screenshot](screenshot.png)
 
 ## Features
 
